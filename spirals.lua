@@ -1,3 +1,5 @@
+-- spirals
+-- @tomw
 
 engine.name = "PolyPerc"
 
@@ -12,11 +14,6 @@ local midi_out_channel
 local scale_names = {}
 local notes = {}
 local active_notes = {}
-
-snd_sel = 1
-snd_names = {"cut","gain","pw","rel","fb","rate", "pan", "delay_pan"}
-snd_params = {"cutoff","gain","pw","release", "delay_feedback","delay_rate", "pan", "delay_pan"}
-NUM_SND_PARAMS = #snd_params
 
 notes_off_metro = metro.init()
 
@@ -50,11 +47,6 @@ function step()
     all_notes_off()
     
     radius = radius + 0.2
-    
-    -- nice angle values
-    --angle = angle + (two_pi * 1.61803398875)
-    --angle = angle + (two_pi * 0.6852)
-    --angle = angle + (two_pi *0.527)
     local r = 0--math.random() / 10
     angle = angle + two_pi * (params:get("rotation") + r)
 
@@ -65,8 +57,7 @@ function step()
     })
 
     local note_idx = math.ceil((angle % two_pi) / rads_per_note)
-
-    local note_num = notes[note_idx]
+    local note_num = notes[util.clamp(note_idx, 1, #notes)]
     local freq = MusicUtil.note_num_to_freq(note_num)
     -- Audio engine out
     if params:get("output") == 1 or params:get("output") == 3 then
@@ -144,7 +135,7 @@ function init()
     min = 0, max = 127, default = 60, formatter = function(param) return MusicUtil.note_num_to_name(param:get(), true) end,
     action = function() build_scale() end}
 
-  cs_ROT = controlspec.new(0, 1, 'lin', 0, 0.61803398875, '', 0.001)
+  cs_ROT = controlspec.new(0, 1, 'lin', 0, 0.61803398875, '', 0.01)
   params:add{type="control",id="rotation",controlspec=cs_ROT}
   
   params:add_separator()
