@@ -1,5 +1,13 @@
 -- spirals
 -- @tomw
+-- llllllll.co/t/spirals
+--
+-- K3 toggle options
+--  > E2 change option
+--  > E3 change value
+--
+-- K1 + K3 toggle scale overlay
+
 
 engine.name = "PolyPerc"
 
@@ -15,13 +23,25 @@ local scale_names = {}
 local notes = {}
 local active_notes = {}
 
-notes_off_metro = metro.init()
+local draw_metro = metro.init()
+local notes_off_metro = metro.init()
+local options_slide_metro = metro.init()
+local enc_metro = metro.init()
 
 local points = {}
 local radius = 0
 local angle = 0
 local two_pi = math.pi * 2
 local rads_per_note = 0
+
+local alt = false
+local x_offset = 0
+local options_state = 0
+local option_selected = 1
+local option_slide_steps = 32
+local option_ids = {"rotation", "root_note", "scale_mode", "step_div"}
+local option_names = {"rotation", "root note", "scale mode", "step div"}
+local option_vis = false
 
 function build_scale()
   local scale = MusicUtil.SCALES[params:get("scale_mode")]
@@ -47,8 +67,7 @@ function step()
     all_notes_off()
     
     radius = radius + 0.2
-    local r = 0--math.random() / 10
-    angle = angle + two_pi * (params:get("rotation") + r)
+    angle = angle + two_pi * params:get("rotation")
 
     table.insert(points, {
       x = 64 + math.cos(angle) * radius,
@@ -74,14 +93,11 @@ function step()
       midi_out_device:note_on(note_num, 96, midi_out_channel)
       table.insert(active_notes, note_num)
 
-      --local note_off_time = 
       -- Note off timeout
       if params:get("note_length") < 4 then
         notes_off_metro:start((60 / params:get("clock_tempo") / params:get("step_div")) * (params:get("note_length") * 0.25), 1)
       end
     end
-    
-    redraw()
     
     if #points >= 128 then
       reset()
@@ -99,6 +115,8 @@ function init()
   midi_out_device.event = function() end
   
   notes_off_metro.event = all_notes_off
+  enc_metro.event = encoder_delay
+  options_slide_metro.event = slide_options
   
   params:add{type = "option", id = "output", name = "output",
     options = options.OUTPUT,
@@ -166,31 +184,172 @@ function init()
 
   params:default()
 
-  math.randomseed(os.time())
   screen.aa(1)
   reset()
-  clock.run(step)  
+  clock.run(step)
+  
+  draw_metro.event = update
+  draw_metro:start(1/60)
+end
+
+function update()
+  redraw()
 end
 
 function reset()
   radius = 6
-  angle = 0
   points = {}
 end
 
-function enc(n,d)
+function encoder_delay()
+  option_vis = false
+end
+
+function slide_options()
+  if options_state == 1 then
+    x_offset = x_offset - 1
+  else
+    x_offset = x_offset + 1
+    if x_offset >= 0 then
+      options_state = 0
+    end
+  end
+end
+
+function enc(n, d)
+  -- if options are visible, e2 changes option & e3 changes value
+  if options_state > 0 then
+    if n == 2 then
+      option_selected = util.clamp(option_selected + d, 1, #option_ids)
+      option_vis = false
+    elseif n == 3 then
+      params:delta(option_ids[option_selected], d)
+      
+      -- show visualization of the value for 5secs
+      option_vis = true
+      enc_metro:start(5, 1)
+    end
+  end
 end
 
 function key(n, z)
+  if n==1 then
+    alt = z==1
+  elseif n == 3 and z == 1 then
+    -- if options aren't visible and alt is held then show the scale overlay, otherwise toggle options if not currently moving
+    if alt and options_state == 0 then
+      option_vis = not option_vis
+      enc_metro:stop()
+    elseif x_offset == 0 or x_offset == 0 - option_slide_steps then
+      option_vis = false
+      options_state = options_state == 1 and 2 or 1
+      options_slide_metro:start(1/60, option_slide_steps)
+    end
+  end
 end
 
 function redraw()
   screen.clear()
-
+  screen.level(15)
+  screen.line_width(1)
   for i=1,#points do
-    screen.circle(points[i].x, points[i].y, points[i].r)
+    screen.circle(points[i].x + x_offset, points[i].y, points[i].r)
     screen.fill()
   end
-  screen.update()
 
+  if options_state == 0 and option_vis then
+    draw_scale()
+  elseif options_state > 0 then
+    draw_options()    
+  end
+  
+  screen.update()
+end
+
+function draw_options()
+  screen.font_face(24)
+  screen.font_size(10)
+
+  -- get the width of the current selected option
+  local val = params:get(option_ids[option_selected])
+  if option_selected == 1 then
+    val = string.format("%.2f", val)
+    if option_vis then
+      draw_angle()
+    end
+  elseif option_selected == 2 then
+    val = MusicUtil.note_num_to_name(val)
+  elseif option_selected == 3 then
+    val = scale_names[val]
+    screen.font_size(8)
+  elseif option_selected == 4 then
+  end
+  
+  if option_vis and (option_selected == 2 or option_selected == 3) then
+    draw_scale()
+  end  
+  
+  local val_width = screen.text_extents(val)
+  
+  -- figure out the options width
+  local opt_width = val_width
+  if opt_width < 64 then
+    opt_width = 64
+  end
+  
+  -- current x of the options (changes when popping in and out)
+  local x_opt_offset = 128 + opt_width + (x_offset * (opt_width / option_slide_steps))
+  
+  -- draw the value
+  screen.move(x_opt_offset - val_width - 4, 30)
+  screen.text(val)
+  screen.stroke()
+  
+  -- draw the option label
+  screen.font_size(10)
+  local label = option_names[option_selected]
+  local label_width = screen.text_extents(label)
+  screen.move(x_opt_offset - label_width - 4, 10)
+  screen.text(label)
+  screen.stroke()
+  
+  -- option hints
+  screen.move(76 + option_slide_steps + x_offset, 64)
+  screen.text("< >")
+  screen.stroke()
+  screen.move(112 + option_slide_steps + x_offset, 64)
+  screen.text("-/+")
+  screen.stroke()
+end
+
+function draw_angle()
+  -- show current angle
+  local angle = two_pi * params:get("rotation")
+  screen.arc(64 + x_offset, 32, 30, 0, angle)
+  screen.stroke()
+  
+  screen.line_width(2)
+  screen.move(90 + x_offset, 32)
+  screen.line(98 + x_offset, 32)
+  screen.stroke()
+  
+  screen.move(64 + x_offset + math.cos(angle) * 26, 32 + math.sin(angle) * 26)
+  screen.line(64 + x_offset + math.cos(angle) * 34, 32 + math.sin(angle) * 34)
+  screen.stroke()
+end
+
+function draw_scale()
+  screen.font_size(8)
+
+  for i=1,#notes do
+    screen.level(5)
+    screen.move(64 + x_offset, 32)
+    screen.line(64 + x_offset + math.cos(i * rads_per_note) * 34, 32 + math.sin(i * rads_per_note) * 34)
+    screen.stroke()
+    
+    screen.level(10)
+    screen.move(64 + x_offset + math.cos((i - 0.5) * rads_per_note) * 26, 32 + math.sin((i - 0.5) * rads_per_note) * 26)
+    screen.text(MusicUtil.note_num_to_name(notes[i]))
+    screen.stroke()
+  end
 end
