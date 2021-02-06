@@ -8,6 +8,7 @@
 --
 -- K1 + K3 toggle scale overlay
 
+--sc = include('lib/screencap')
 
 engine.name = "PolyPerc"
 
@@ -18,6 +19,8 @@ options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
 
 local midi_out_device
 local midi_out_channel
+local midi_in_device
+local midi_in_channel
 
 local scale_names = {}
 local notes = {}
@@ -113,6 +116,8 @@ function init()
   
   midi_out_device = midi.connect(1)
   midi_out_device.event = function() end
+  midi_in_device = midi.connect(1)
+  midi_in_device.event = midi_event
   
   notes_off_metro.event = all_notes_off
   enc_metro.event = encoder_delay
@@ -129,15 +134,21 @@ function init()
       end
     end}
   params:add{type = "number", id = "midi_out_device", name = "midi out device",
-    min = 1, max = 4, default = 1,
-    
-    action = function(value) midi_out_device = midi.connect(value) end}
+    min = 1, max = 4, default = 1, action = function(value) midi_out_device = midi.connect(value) end}
   params:add{type = "number", id = "midi_out_channel", name = "midi out channel",
     min = 1, max = 16, default = 1,
     action = function(value)
       all_notes_off()
       midi_out_channel = value
     end}
+    
+  params:add{type = "number", id = "midi_in_device", name = "midi in device",
+    min = 1, max = 4, default = 1, action = function(value) midi_in_device = midi.connect(value) end}
+  params:add{type = "number", id = "midi_in_channel", name = "midi in channel",
+    min = 1, max = 16, default = 1,
+    action = function(value)
+      midi_in_channel = value
+    end}    
   params:add_separator()
   
   params:add{type = "number", id = "step_div", name = "step division", min = 1, max = 16, default = 1}
@@ -192,6 +203,17 @@ function init()
   draw_metro:start(1/60)
 end
 
+function midi_event(data)
+  local msg = midi.to_msg(data)
+  local channel_param = params:get("midi_in_channel")
+  if channel_param == 1 or (channel_param > 1 and msg.ch == channel_param - 1) then
+    -- Note off
+    if msg.type == "note_off" then
+      params:set("root_note", msg.note)
+    end
+  end
+end
+
 function update()
   redraw()
 end
@@ -232,9 +254,17 @@ function enc(n, d)
   end
 end
 
+--local recording = false
 function key(n, z)
   if n==1 then
     alt = z==1
+  --elseif n == 2 and z == 1 then
+  --  if recording then
+  --    sc.stop()
+  --  else
+  --    sc.start("spirals", 30)
+  --  end
+  --  recording = not recording
   elseif n == 3 and z == 1 then
     -- if options aren't visible and alt is held then show the scale overlay, otherwise toggle options if not currently moving
     if alt and options_state == 0 then
@@ -270,25 +300,19 @@ function draw_options()
   screen.font_face(24)
   screen.font_size(10)
 
-  -- get the width of the current selected option
-  local val = params:get(option_ids[option_selected])
-  if option_selected == 1 then
-    val = string.format("%.2f", val)
-    if option_vis then
+  if option_vis then
+    if option_selected ==1 then
       draw_angle()
+    elseif option_selected == 2 or option_selected == 3 then
+      draw_scale()
     end
-  elseif option_selected == 2 then
-    val = MusicUtil.note_num_to_name(val)
-  elseif option_selected == 3 then
-    val = scale_names[val]
-    screen.font_size(8)
-  elseif option_selected == 4 then
   end
   
-  if option_vis and (option_selected == 2 or option_selected == 3) then
-    draw_scale()
-  end  
-  
+  -- get the width of the current selected option
+  local val = params:string(option_ids[option_selected])  
+  if option_selected == 3 then
+    screen.font_size(8)
+  end
   local val_width = screen.text_extents(val)
   
   -- figure out the options width
