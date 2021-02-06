@@ -2,10 +2,10 @@
 -- @tomw
 -- llllllll.co/t/spirals
 --
+-- K2 lock sequence
 -- K3 toggle options
 --  > E2 change option
 --  > E3 change value
---
 -- K1 + K3 toggle scale overlay
 
 --sc = include('lib/screencap')
@@ -37,13 +37,16 @@ local angle = 0
 local two_pi = math.pi * 2
 local rads_per_note = 0
 
+local locked = false
+local lock_step = 0
+
 local alt = false
 local x_offset = 0
 local options_state = 0
 local option_selected = 1
 local option_slide_steps = 32
-local option_ids = {"rotation", "root_note", "scale_mode", "step_div"}
-local option_names = {"rotation", "root note", "scale mode", "step div"}
+local option_ids = {"rotation", "lock_steps", "root_note", "scale_mode", "step_div"}
+local option_names = {"rotation", "lock steps", "root note", "scale mode", "step div"}
 local option_vis = false
 
 function build_scale()
@@ -69,16 +72,29 @@ function step()
     
     all_notes_off()
     
-    radius = radius + 0.2
-    angle = angle + two_pi * params:get("rotation")
+    local note_angle = 0
+    if locked then
+      local deltaX = points[lock_step].x - 64
+      local deltaY = points[lock_step].y - 32
+      note_angle = math.atan2(deltaY, deltaX)
 
-    table.insert(points, {
-      x = 64 + math.cos(angle) * radius,
-      y = 32 + math.sin(angle) * radius,
-      r = 1
-    })
+      lock_step = lock_step + 1
+      if lock_step > #points then
+        reset_lock()
+      end
+    else
+      radius = radius + 0.2
+      angle = angle + two_pi * params:get("rotation")
+  
+      table.insert(points, {
+        x = 64 + math.cos(angle) * radius,
+        y = 32 + math.sin(angle) * radius,
+        r = 1
+      })
+      note_angle = angle
+    end
 
-    local note_idx = math.ceil((angle % two_pi) / rads_per_note)
+    local note_idx = math.ceil((note_angle % two_pi) / rads_per_note)
     local note_num = notes[util.clamp(note_idx, 1, #notes)]
     local freq = MusicUtil.note_num_to_freq(note_num)
     -- Audio engine out
@@ -107,6 +123,13 @@ function step()
     end
     
   end  
+end
+
+function reset_lock()
+  lock_step = #points - params:get("lock_steps") + 1
+  if lock_step < 1 then
+    lock_step = 1
+  end
 end
 
 function init()
@@ -167,6 +190,8 @@ function init()
   cs_ROT = controlspec.new(0, 1, 'lin', 0, 0.61803398875, '', 0.01)
   params:add{type="control",id="rotation",controlspec=cs_ROT}
   
+  params:add{type = "number", id = "lock_steps", name = "lock steps", min = 1, max = 16, default = 4}
+
   params:add_separator()
 
   cs_AMP = controlspec.new(0,1,'lin',0,0.5,'')
@@ -258,13 +283,15 @@ end
 function key(n, z)
   if n==1 then
     alt = z==1
-  --elseif n == 2 and z == 1 then
+  elseif n == 2 and z == 1 then
   --  if recording then
   --    sc.stop()
   --  else
   --    sc.start("spirals", 30)
   --  end
   --  recording = not recording
+    locked = not locked
+    reset_lock()
   elseif n == 3 and z == 1 then
     -- if options aren't visible and alt is held then show the scale overlay, otherwise toggle options if not currently moving
     if alt and options_state == 0 then
@@ -303,14 +330,14 @@ function draw_options()
   if option_vis then
     if option_selected ==1 then
       draw_angle()
-    elseif option_selected == 2 or option_selected == 3 then
+    elseif option_selected == 3 or option_selected == 4 then
       draw_scale()
     end
   end
   
   -- get the width of the current selected option
   local val = params:string(option_ids[option_selected])  
-  if option_selected == 3 then
+  if option_selected == 4 then
     screen.font_size(8)
   end
   local val_width = screen.text_extents(val)
