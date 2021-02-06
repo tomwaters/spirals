@@ -206,7 +206,7 @@ end
 function midi_event(data)
   local msg = midi.to_msg(data)
   local channel_param = params:get("midi_in_channel")
-  if channel_param == 1 or (channel_param > 1 and msg.ch == channel_param - 1) then
+  if msg.ch == channel_param then
     -- Note off
     if msg.type == "note_off" then
       params:set("root_note", msg.note)
