@@ -16,6 +16,7 @@ MusicUtil = require "musicutil"
 
 options = {}
 options.OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"}
+options.PLAY_MODE = {"note", "chord"}
 
 local midi_out_device
 local midi_out_channel
@@ -45,15 +46,15 @@ local x_offset = 0
 local options_state = 0
 local option_selected = 1
 local option_slide_steps = 32
-local option_ids = {"rotation", "lock_steps", "root_note", "scale_mode", "step_div"}
-local option_names = {"rotation", "lock steps", "root note", "scale mode", "step div"}
+local option_ids = {"rotation", "lock_steps", "root_note", "scale_mode", "play_mode", "step_div"}
+local option_names = {"rotation", "lock steps", "root note", "scale mode", "play mode", "step div"}
 local option_vis = false
 
 function build_scale()
   local scale = MusicUtil.SCALES[params:get("scale_mode")]
   local scale_length = #scale.intervals - 1
   
-  notes = MusicUtil.generate_scale_of_length(params:get("root_note"), params:get("scale_mode"), scale_length)
+  notes = MusicUtil.generate_scale_of_length(params:get("root_note"), params:get("scale_mode"), scale_length + 4)
   rads_per_note = two_pi / scale_length
 end
 
@@ -97,9 +98,20 @@ function step()
     local note_idx = math.ceil((note_angle % two_pi) / rads_per_note)
     local note_num = notes[util.clamp(note_idx, 1, #notes)]
     local freq = MusicUtil.note_num_to_freq(note_num)
+    
+    local note_num3 = notes[note_idx + 2]
+    local freq_3 = MusicUtil.note_num_to_freq(note_num3)
+    local note_num5 = notes[note_idx + 4]
+    local freq_5 = MusicUtil.note_num_to_freq(note_num5)
+    
     -- Audio engine out
     if params:get("output") == 1 or params:get("output") == 3 then
       engine.hz(freq)
+      -- chord mode
+      if params:get("play_mode") == 2 then
+        engine.hz(freq_3)
+        engine.hz(freq_5)
+      end
     elseif params:get("output") == 4 then
       crow.output[1].volts = (note_num-60)/12
       crow.output[2].execute()
@@ -111,6 +123,15 @@ function step()
     if (params:get("output") == 2 or params:get("output") == 3) then
       midi_out_device:note_on(note_num, 96, midi_out_channel)
       table.insert(active_notes, note_num)
+      
+      -- chord mode
+      if params:get("play_mode") == 2 then
+        midi_out_device:note_on(note_num3, 96, midi_out_channel)
+        table.insert(active_notes, note_num3)
+        
+        midi_out_device:note_on(note_num5, 96, midi_out_channel)
+        table.insert(active_notes, note_num5)
+      end
 
       -- Note off timeout
       if params:get("note_length") < 4 then
@@ -192,6 +213,9 @@ function init()
   
   params:add{type = "number", id = "lock_steps", name = "lock steps", min = 1, max = 16, default = 4}
 
+  params:add{type = "option", id = "play_mode", name = "play mode",
+    options = options.PLAY_MODE, action = function(value) end}
+  
   params:add_separator()
 
   cs_AMP = controlspec.new(0,1,'lin',0,0.5,'')
@@ -290,8 +314,10 @@ function key(n, z)
   --    sc.start("spirals", 30)
   --  end
   --  recording = not recording
-    locked = not locked
-    reset_lock()
+    if #points > 0 then
+      locked = not locked
+      reset_lock()
+    end
   elseif n == 3 and z == 1 then
     -- if options aren't visible and alt is held then show the scale overlay, otherwise toggle options if not currently moving
     if alt and options_state == 0 then
@@ -307,17 +333,18 @@ end
 
 function redraw()
   screen.clear()
-  screen.level(15)
-  screen.line_width(1)
-  for i=1,#points do
-    screen.circle(points[i].x + x_offset, points[i].y, points[i].r)
-    screen.fill()
-  end
 
   if options_state == 0 and option_vis then
     draw_scale()
   elseif options_state > 0 then
     draw_options()    
+  end
+
+  screen.level(15)
+  screen.line_width(1)
+  for i=1,#points do
+    screen.circle(points[i].x + x_offset, points[i].y, points[i].r)
+    screen.fill()
   end
   
   screen.update()
@@ -326,15 +353,8 @@ end
 function draw_options()
   screen.font_face(24)
   screen.font_size(10)
+  screen.level(15)
 
-  if option_vis then
-    if option_selected ==1 then
-      draw_angle()
-    elseif option_selected == 3 or option_selected == 4 then
-      draw_scale()
-    end
-  end
-  
   -- get the width of the current selected option
   local val = params:string(option_ids[option_selected])  
   if option_selected == 4 then
@@ -371,6 +391,15 @@ function draw_options()
   screen.move(112 + option_slide_steps + x_offset, 64)
   screen.text("-/+")
   screen.stroke()
+  
+  -- options visualizations
+  if option_vis then
+    if option_selected ==1 then
+      draw_angle()
+    elseif option_selected == 3 or option_selected == 4 then
+      draw_scale()
+    end
+  end  
 end
 
 function draw_angle()
@@ -393,12 +422,12 @@ function draw_scale()
   screen.font_size(8)
 
   for i=1,#notes do
-    screen.level(5)
+    screen.level(2)
     screen.move(64 + x_offset, 32)
     screen.line(64 + x_offset + math.cos(i * rads_per_note) * 34, 32 + math.sin(i * rads_per_note) * 34)
     screen.stroke()
     
-    screen.level(10)
+    screen.level(15)
     screen.move(64 + x_offset + math.cos((i - 0.5) * rads_per_note) * 26, 32 + math.sin((i - 0.5) * rads_per_note) * 26)
     screen.text(MusicUtil.note_num_to_name(notes[i]))
     screen.stroke()
