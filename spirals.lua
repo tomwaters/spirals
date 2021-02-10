@@ -32,6 +32,7 @@ local notes_off_metro = metro.init()
 local options_slide_metro = metro.init()
 local enc_metro = metro.init()
 
+local rotation = 0
 local points = {}
 local radius = 0
 local angle = 0
@@ -46,8 +47,8 @@ local x_offset = 0
 local options_state = 0
 local option_selected = 1
 local option_slide_steps = 32
-local option_ids = {"rotation", "lock_steps", "root_note", "scale_mode", "play_mode", "step_div"}
-local option_names = {"rotation", "lock steps", "root note", "scale mode", "play mode", "step div"}
+local option_ids = {"rotation", "rot_lfo_amt", "rot_lfo_fq", "lock_steps", "root_note", "scale_mode", "play_mode", "step_div"}
+local option_names = {"rotation", "lfo amount", "lfo freq", "lock steps", "root note", "scale mode", "play mode", "step div"}
 local option_vis = false
 
 function build_scale()
@@ -84,8 +85,15 @@ function step()
         reset_lock()
       end
     else
+      rotation = params:get("rotation")
+      local lfo_amount = params:get("rot_lfo_amt")
+      if lfo_amount > 0 then
+        local lfo_rate = params:get("rot_lfo_fq")
+        rotation = rotation + math.sin(two_pi * lfo_rate * util.time()) * lfo_amount
+      end
+
       radius = radius + 0.2
-      angle = angle + two_pi * params:get("rotation")
+      angle = angle + two_pi * rotation
   
       table.insert(points, {
         x = 64 + math.cos(angle) * radius,
@@ -209,7 +217,14 @@ function init()
     action = function() build_scale() end}
 
   cs_ROT = controlspec.new(0, 1, 'lin', 0, 0.61803398875, '', 0.01)
-  params:add{type="control",id="rotation",controlspec=cs_ROT}
+  params:add{type="control",id="rotation",controlspec=cs_ROT, 
+    action=function(x) rotation = x end}
+  
+  cs_ROTFOAMT = controlspec.new(0, 1, 'lin', 0, 0, '', 0.01)
+  params:add{type="control",id="rot_lfo_amt", name="lfo amount",controlspec=cs_ROTFOAMT}
+  
+  --cs_ROTFOFQ = controlspec.new(0, 10, 'lin', 0.001, 0.001, 'Hz', 0.001)
+  params:add{type="control",id="rot_lfo_fq", name="lfo freq",controlspec=controlspec.LOFREQ}  
   
   params:add{type = "number", id = "lock_steps", name = "lock steps", min = 1, max = 16, default = 4}
 
@@ -268,6 +283,20 @@ function update()
 end
 
 function reset()
+  -- screenshot final frame before restarting  
+  --if #points > 0 then
+    --local r = params:get("rot_lfo_fq")
+    --_norns.screen_export_png("/home/we/dust/spirals/"..r..".png")
+    --params:set("rot_lfo_fq", r + 0.01)
+  --end
+  
+  -- capture screenshots at 5fps
+  --if sc.is_recording() then
+  --  sc.stop()
+  --else
+  --  sc.start("spirals", 5)
+  --end
+  
   radius = 6
   points = {}
 end
@@ -303,17 +332,10 @@ function enc(n, d)
   end
 end
 
---local recording = false
 function key(n, z)
   if n==1 then
     alt = z==1
   elseif n == 2 and z == 1 then
-  --  if recording then
-  --    sc.stop()
-  --  else
-  --    sc.start("spirals", 30)
-  --  end
-  --  recording = not recording
     if #points > 0 then
       locked = not locked
       reset_lock()
@@ -356,8 +378,12 @@ function draw_options()
   screen.level(15)
 
   -- get the width of the current selected option
-  local val = params:string(option_ids[option_selected])  
-  if option_selected == 4 then
+  local val = params:string(option_ids[option_selected])
+  if option_selected == 1 and not option_vis then
+    val = string.format("%.2f", rotation)
+  end
+    
+  if option_selected == 6 then
     screen.font_size(8)
   end
   local val_width = screen.text_extents(val)
@@ -396,7 +422,7 @@ function draw_options()
   if option_vis then
     if option_selected ==1 then
       draw_angle()
-    elseif option_selected == 3 or option_selected == 4 then
+    elseif option_selected == 5 or option_selected == 6 then
       draw_scale()
     end
   end  
@@ -404,7 +430,12 @@ end
 
 function draw_angle()
   -- show current angle
-  local angle = two_pi * params:get("rotation")
+  local r = rotation
+  if option_vis then
+    r = params:get("rotation")
+  end
+  
+  local angle = two_pi * r
   screen.arc(64 + x_offset, 32, 30, 0, angle)
   screen.stroke()
   
