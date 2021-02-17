@@ -2,7 +2,7 @@
 -- @tomw
 -- llllllll.co/t/spirals
 --
--- E2 change spiral
+-- E1 change spiral
 -- K2 play / stop spiral
 -- K3 toggle options
 --  > E2 change option
