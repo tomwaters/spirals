@@ -16,6 +16,9 @@ MusicUtil = require "musicutil"
 local Spiral = include("lib/spiral")
 
 scale_names = {}
+local audio_engine = ""
+audio_engines = {"PolyPerc"}
+mxsamples_instruments = {}
 
 local draw_metro = metro.init()
 local options_slide_metro = metro.init()
@@ -34,6 +37,13 @@ local current_spiral = 0
 local spirals = {}
 
 function init()
+  if libInstalled("mx.samples/lib/mx.samples") then
+    mxsamples = include("mx.samples/lib/mx.samples")
+    table.insert(audio_engines, "MxSamples")
+    skeys = mxsamples:new()
+    mxsamples_instruments = skeys:list_instruments()
+  end
+
   for i = 1, #MusicUtil.SCALES do
     table.insert(scale_names, string.lower(MusicUtil.SCALES[i].name))
   end
@@ -41,15 +51,42 @@ function init()
   enc_metro.event = encoder_delay
   options_slide_metro.event = slide_options
 
+  params:add{type = "option", id = "audio_engine", name = "audio engine",
+    options = audio_engines,
+    action = function(value)
+      -- remember who was playing and stop play
+      local spiral_state = {}
+      for s = 1, #spirals do
+        table.insert(spiral_state, spirals[s].playing)
+        spirals[s].playing = false
+        spirals[s]:all_notes_off()
+      end
+
+      -- change engine and resume play when done
+      engine.load(audio_engines[value], function()
+        if audio_engines[value] == "MxSamples" then
+          --skeys = mxsamples:new()
+        end
+
+        for s = 1, #spirals do
+          spirals[s].playing = spiral_state[s]
+        end
+        audio_engine = audio_engines[value]
+      end
+      )
+    end
+  }
+  
+  -- add spirals and their params
   table.insert(spirals, Spiral:new(1))
   table.insert(spirals, Spiral:new(2))
   table.insert(spirals, Spiral:new(3))
   table.insert(spirals, Spiral:new(4))
   spirals[1].playing = true
   current_spiral = 1
-  
-  params:add_separator()
 
+  -- add polyperc params
+  params:add_group("PolyPerc", 6)
   cs_AMP = controlspec.new(0,1,'lin',0,0.5,'')
   params:add{type="control",id="amp",controlspec=cs_AMP,
     action=function(x) engine.amp(x) end}
@@ -80,6 +117,17 @@ function init()
 
   draw_metro.event = update
   draw_metro:start(1/60)
+end
+
+function libInstalled(file)
+  local dirs = {norns.state.path, _path.code, _path.extn}
+  for _, dir in ipairs(dirs) do
+    local p = dir..file..'.lua'
+    if util.file_exists(p) then
+      return true
+    end
+  end
+  return false
 end
 
 function cleanup()
