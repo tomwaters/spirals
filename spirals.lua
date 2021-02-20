@@ -16,7 +16,6 @@ MusicUtil = require "musicutil"
 local Spiral = include("lib/spiral")
 
 scale_names = {}
-local audio_engine = ""
 audio_engines = {"PolyPerc"}
 mxsamples_instruments = {}
 
@@ -51,40 +50,6 @@ function init()
   enc_metro.event = encoder_delay
   options_slide_metro.event = slide_options
 
-  params:add{type = "option", id = "audio_engine", name = "audio engine",
-    options = audio_engines,
-    action = function(value)
-      -- remember who was playing and stop play
-      local spiral_state = {}
-      for s = 1, #spirals do
-        table.insert(spiral_state, spirals[s].playing)
-        spirals[s].playing = false
-        spirals[s]:all_notes_off()
-      end
-
-      -- change engine and resume play when done
-      engine.load(audio_engines[value], function()
-        if audio_engines[value] == "MxSamples" then
-          --skeys = mxsamples:new()
-        end
-
-        for s = 1, #spirals do
-          spirals[s].playing = spiral_state[s]
-        end
-        audio_engine = audio_engines[value]
-      end
-      )
-    end
-  }
-  
-  -- add spirals and their params
-  table.insert(spirals, Spiral:new(1))
-  table.insert(spirals, Spiral:new(2))
-  table.insert(spirals, Spiral:new(3))
-  table.insert(spirals, Spiral:new(4))
-  spirals[1].playing = true
-  current_spiral = 1
-
   -- add polyperc params
   params:add_group("PolyPerc", 6)
   cs_AMP = controlspec.new(0,1,'lin',0,0.5,'')
@@ -110,13 +75,52 @@ function init()
   cs_PAN = controlspec.new(-1,1, 'lin',0,0,'')
   params:add{type="control",id="pan",controlspec=cs_PAN,
     action=function(x) engine.pan(x) end}
-
+  
+  params:add{type = "option", id = "audio_engine", name = "audio engine",
+    options = audio_engines,
+    action = function(value)
+      if audio_engines[value] ~= engine.name then
+        -- remember who was playing and stop play
+        local spiral_state = {}
+        for s = 1, #spirals do
+          table.insert(spiral_state, spirals[s].playing)
+          spirals[s].playing = false
+          spirals[s]:all_notes_off()
+        end
+        
+        -- change engine and resume play when done
+        engine.load(audio_engines[value], function()
+          if audio_engines[value] == "MxSamples" then
+            mxSamplesInit()
+          end
+          
+          for s = 1, #spirals do
+            spirals[s].playing = spiral_state[s]
+          end
+        end
+      )
+      end
+    end
+  }
+  
+  -- add spirals and their params
+  table.insert(spirals, Spiral:new(1))
+  table.insert(spirals, Spiral:new(2))
+  table.insert(spirals, Spiral:new(3))
+  table.insert(spirals, Spiral:new(4))
+  spirals[1].playing = true
+  current_spiral = 1
+      
   params:default()
 
   screen.aa(1)
 
   draw_metro.event = update
   draw_metro:start(1/60)
+end
+
+function mxSamplesInit()
+  skeys:reset()
 end
 
 function libInstalled(file)

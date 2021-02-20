@@ -53,7 +53,7 @@ function Spiral:reset()
 end
 
 function Spiral:init_params()
-  local param_count = mxsamples == nil and 14 or 15
+  local param_count = mxsamples == nil and 15 or 16
   
   params:add_group("spiral "..self.id, param_count)
   
@@ -105,7 +105,9 @@ function Spiral:init_params()
     
   params:add{type = "option", id = self.id.."_note_length", name = "note length",
     options = {"25%", "50%", "75%", "100%"},
-    default = 4}    
+    default = 4}
+
+  params:add{type = "number", id = self.id.."_velocity", name = "velocity", min = 1, max = 127, default = 100}    
     
   params:add{type = "number", id = self.id.."_step_div", name = "step division", min = 1, max = 16, default = 1}
 
@@ -190,7 +192,6 @@ end
 function Spiral:step()
   while true do
     clock.sync(1/self:get_param("step_div"))
-    
     self:all_notes_off()
     
     if self.playing then
@@ -232,16 +233,17 @@ function Spiral:step()
       local note_num5 = self.notes[note_idx + 4]
       local freq_5 = MusicUtil.note_num_to_freq(note_num5)
       local note_off = false
-      
+      local velocity = self:get_param("velocity")
+
       -- Audio engine out
       if self.output == 1 or self.output == 3 then
         -- Mx.Samples
         if audio_engines[params:get("audio_engine")] == "MxSamples" then
-          skeys:on({name=self.mx_instrument, midi=note_num, velocity=120})
+          skeys:on({name=self.mx_instrument, midi=note_num, velocity=velocity})
           -- chord mode
           if self:get_param("play_mode") == 2 then
-            skeys:on({name=self.mx_instrument, midi=note_num3, velocity=120})
-            skeys:on({name=self.mx_instrument, midi=note_num5, velocity=120})
+            skeys:on({name=self.mx_instrument, midi=note_num3, velocity=velocity})
+            skeys:on({name=self.mx_instrument, midi=note_num5, velocity=velocity})
           end
           note_off = true
         else
@@ -261,15 +263,15 @@ function Spiral:step()
   
       -- MIDI out
       if (self.output == 2 or self.output == 3) then
-        self.midi_out_device:note_on(note_num, 96, self:get_param("midi_out_channel"))
+        self.midi_out_device:note_on(note_num, velocity, self:get_param("midi_out_channel"))
         table.insert(self.active_notes, note_num)
         
         -- chord mode
         if self:get_param("play_mode") == 2 then
-          self.midi_out_device:note_on(note_num3, 96, self:get_param("midi_out_channel"))
+          self.midi_out_device:note_on(note_num3, velocity, self:get_param("midi_out_channel"))
           table.insert(self.active_notes, note_num3)
           
-          self.midi_out_device:note_on(note_num5, 96, self:get_param("midi_out_channel"))
+          self.midi_out_device:note_on(note_num5, velocity, self:get_param("midi_out_channel"))
           table.insert(self.active_notes, note_num5)
         end
   
