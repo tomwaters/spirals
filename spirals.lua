@@ -28,8 +28,8 @@ local x_offset = 0
 local options_state = 0
 local option_selected = 1
 local option_slide_steps = 32
-local option_ids = {"rotation", "rot_lfo_amt", "rot_lfo_fq", "lock_steps", "root_note", "scale_mode", "play_mode", "step_div"}
-local option_names = {"rotation", "lfo amount", "lfo freq", "lock steps", "root note", "scale mode", "play mode", "step div"}
+local option_ids = {"rotation", "rot_lfo_amt", "rot_lfo_fq", "lock_steps", "root_note", "scale_mode", "play_mode", "step_div", "rests"}
+local option_names = {"rotation", "lfo amount", "lfo freq", "lock steps", "root note", "scale mode", "play mode", "step div", "rests"}
 local option_vis = false
 
 local current_spiral = 0
@@ -276,7 +276,7 @@ function draw_options()
   if option_vis then
     if option_selected ==1 then
       draw_angle()
-    elseif option_selected == 5 or option_selected == 6 then
+    elseif option_selected == 5 or option_selected == 6 or option_selected == 9 then
       draw_scale()
     end
   end  
@@ -307,15 +307,17 @@ function draw_scale()
   local spiral = spirals[current_spiral]
 
   screen.font_size(8)
-  for i=1,#spiral.notes do
+  for i=1,#spiral.notes - 4 do
     screen.level(2)
     screen.move(64 + x_offset, 32)
     screen.line(64 + x_offset + math.cos(i * spiral.rads_per_note) * 34, 32 + math.sin(i * spiral.rads_per_note) * 34)
     screen.stroke()
     
-    screen.level(15)
-    screen.move(64 + x_offset + math.cos((i - 0.5) * spiral.rads_per_note) * 26, 32 + math.sin((i - 0.5) * spiral.rads_per_note) * 26)
-    screen.text(MusicUtil.note_num_to_name(spiral.notes[i]))
-    screen.stroke()
+    if spiral.notes[i] > -1 then
+      screen.level(15)
+      screen.move(64 + x_offset + math.cos((i - 0.5) * spiral.rads_per_note) * 26, 32 + math.sin((i - 0.5) * spiral.rads_per_note) * 26)
+      screen.text(MusicUtil.note_num_to_name(spiral.notes[i]))
+      screen.stroke()
+    end
   end
 end

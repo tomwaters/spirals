@@ -1,10 +1,12 @@
+er = require 'er'
 MusicUtil = require "musicutil"
 SpiralMidiListener = include("lib/spirals_midi_listener")
 
 two_pi = math.pi * 2
 options = {
   OUTPUT = {"audio", "midi", "audio + midi", "crow out 1+2", "crow ii JF"},
-  PLAY_MODE = {"note", "chord"}
+  PLAY_MODE = {"note", "chord"},
+  STEP_DIV = {0.125, 0.25, 0.5, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
 }
 
 Spiral = {}
@@ -53,7 +55,7 @@ function Spiral:reset()
 end
 
 function Spiral:init_params()
-  local param_count = mxsamples == nil and 15 or 16
+  local param_count = mxsamples == nil and 16 or 17
   
   params:add_group("spiral "..self.id, param_count)
   
@@ -91,7 +93,7 @@ function Spiral:init_params()
     min = 1, max = 16, default = 1,
     action = function(value)
       self:all_notes_off()
-      midi_out_channel = value
+      self.midi_out_channel = value
     end}
 
   params:add{type = "number", id = self.id.."_midi_in_device", name = "midi in device",
@@ -109,7 +111,9 @@ function Spiral:init_params()
 
   params:add{type = "number", id = self.id.."_velocity", name = "velocity", min = 1, max = 127, default = 100}    
     
-  params:add{type = "number", id = self.id.."_step_div", name = "step division", min = 1, max = 16, default = 1}
+  params:add{type = "option", id = self.id.."_step_div", name = "step division", options = options.STEP_DIV, default = 1}
+  
+  params:add{type = "number", id = self.id.."_rests", name = "rests", min = 0 , max = 10, default = 0, action = function() self:build_scale() end}
 
   params:add{type = "option", id = self.id.."_scale_mode", name = "scale mode",
     options = scale_names, default = 5,
@@ -155,7 +159,32 @@ function Spiral:build_scale()
   local scale_length = #scale.intervals - 1
   
   self.notes = MusicUtil.generate_scale_of_length(self:get_param("root_note"), self:get_param("scale_mode"), scale_length + 4)
-  self.rads_per_note = two_pi / scale_length
+  
+  -- add in rests spread throughout the notes in a euclidean style
+  local rests = self:get_param("rests")
+  if rests > 0 then
+    local euc = er.gen(scale_length, scale_length + rests)
+    
+    local note_idx = 1
+    local notes_with_rests = {}
+    for i = 1, #euc do
+      if euc[i] then
+        notes_with_rests[i] = self.notes[note_idx]
+        note_idx = note_idx + 1
+      else
+        notes_with_rests[i] = -1
+      end
+    end
+    
+    -- add extra notes for chord mode
+    for i = scale_length + 1, scale_length + 4 do
+      table.insert(notes_with_rests, self.notes[i])
+    end
+    
+    self.notes = notes_with_rests
+  end
+  
+  self.rads_per_note = two_pi / (scale_length + rests)
 end
 
 function Spiral:midi_event(data)
@@ -189,11 +218,24 @@ function Spiral:reset_lock()
   end
 end
 
+function Spiral:get_third(note_idx)
+  local f = false
+  for i=note_idx + 1, #self.notes do
+    if self.notes[i] > -1 then
+      if f then
+        return i
+      else
+        f = true
+      end
+    end
+  end
+end
+
 function Spiral:step()
   while true do
-    clock.sync(1/self:get_param("step_div"))
+    clock.sync(1 / options.STEP_DIV[self:get_param("step_div")])
     self:all_notes_off()
-    
+
     if self.playing then
       local note_angle = 0
       if self.locked then
@@ -226,67 +268,70 @@ function Spiral:step()
   
       local note_idx = math.ceil((note_angle % two_pi) / self.rads_per_note)
       local note_num = self.notes[util.clamp(note_idx, 1, #self.notes)]
-      local freq = MusicUtil.note_num_to_freq(note_num)
-      
-      local note_num3 = self.notes[note_idx + 2]
-      local freq_3 = MusicUtil.note_num_to_freq(note_num3)
-      local note_num5 = self.notes[note_idx + 4]
-      local freq_5 = MusicUtil.note_num_to_freq(note_num5)
-      local note_off = false
-      local velocity = self:get_param("velocity")
-
-      -- Audio engine out
-      if self.output == 1 or self.output == 3 then
-        -- Mx.Samples
-        if audio_engines[params:get("audio_engine")] == "MxSamples" then
-          skeys:on({name=self.mx_instrument, midi=note_num, velocity=velocity})
-          -- chord mode
-          if self:get_param("play_mode") == 2 then
-            skeys:on({name=self.mx_instrument, midi=note_num3, velocity=velocity})
-            skeys:on({name=self.mx_instrument, midi=note_num5, velocity=velocity})
-          end
-          note_off = true
-        else
-          engine.hz(freq)
-          -- chord mode
-          if self:get_param("play_mode") == 2 then
-            engine.hz(freq_3)
-            engine.hz(freq_5)
-          end
-        end
-      elseif self.output == 4 then
-        crow.output[1].volts = (note_num-60)/12
-        crow.output[2].execute()
-      elseif self.output == 5 then
-        crow.ii.jf.play_note((note_num-60)/12,5)
-      end
-  
-      -- MIDI out
-      if (self.output == 2 or self.output == 3) then
-        self.midi_out_device:note_on(note_num, velocity, self:get_param("midi_out_channel"))
-        table.insert(self.active_notes, note_num)
+      if note_num > -1 then
+        local freq = MusicUtil.note_num_to_freq(note_num)
         
-        -- chord mode
-        if self:get_param("play_mode") == 2 then
-          self.midi_out_device:note_on(note_num3, velocity, self:get_param("midi_out_channel"))
-          table.insert(self.active_notes, note_num3)
-          
-          self.midi_out_device:note_on(note_num5, velocity, self:get_param("midi_out_channel"))
-          table.insert(self.active_notes, note_num5)
-        end
+        local note_num3_idx = self:get_third(note_idx)
+        local note_num3 = self.notes[note_num3_idx]
+        local note_num5 = self.notes[self:get_third(note_num3_idx)]
+        local note_off = false
+        local velocity = self:get_param("velocity")
   
-        note_off = true
-      end
-      
-      -- Note off timeout
-      if note_off and self:get_param("note_length") < 4 then
-        self.notes_off_metro:start((60 / params:get("clock_tempo") / self:get_param("step_div")) * (self:get_param("note_length") * 0.25), 1)
-      end
+        -- Audio engine out
+        if self.output == 1 or self.output == 3 then
+          -- Mx.Samples
+          if audio_engines[params:get("audio_engine")] == "MxSamples" then
+            skeys:on({name=self.mx_instrument, midi=note_num, velocity=velocity})
+            -- chord mode
+            if self:get_param("play_mode") == 2 then
+              skeys:on({name=self.mx_instrument, midi=note_num3, velocity=velocity})
+              skeys:on({name=self.mx_instrument, midi=note_num5, velocity=velocity})
+            end
+            note_off = true
+          else
+            engine.hz(freq)
+            -- chord mode
+            if self:get_param("play_mode") == 2 then
+              local freq_3 = MusicUtil.note_num_to_freq(note_num3)
+              local freq_5 = MusicUtil.note_num_to_freq(note_num5)
+              engine.hz(freq_3)
+              engine.hz(freq_5)
+            end
+          end
+        elseif self.output == 4 then
+          crow.output[1].volts = (note_num-60)/12
+          crow.output[2].execute()
+        elseif self.output == 5 then
+          crow.ii.jf.play_note((note_num-60)/12,5)
+        end
+    
+        -- MIDI out
+        if (self.output == 2 or self.output == 3) then
+          self.midi_out_device:note_on(note_num, velocity, self:get_param("midi_out_channel"))
+          table.insert(self.active_notes, note_num)
+          
+          -- chord mode
+          if self:get_param("play_mode") == 2 then
+            self.midi_out_device:note_on(note_num3, velocity, self:get_param("midi_out_channel"))
+            table.insert(self.active_notes, note_num3)
+            
+            self.midi_out_device:note_on(note_num5, velocity, self:get_param("midi_out_channel"))
+            table.insert(self.active_notes, note_num5)
+          end
+    
+          note_off = true
+        end
+        
+        -- Note off timeout
+        if note_off and self:get_param("note_length") < 4 then
+          self.notes_off_metro:start((60 / params:get("clock_tempo") / options.STEP_DIV[self:get_param("step_div")]) * (self:get_param("note_length") * 0.25), 1)
+        end
+      end        
       
       if #self.points >= 128 then
         self:reset()
       end
-    
+
     end
   end
 
