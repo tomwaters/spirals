@@ -34,7 +34,6 @@ function Spiral:new(id)
     locked = false,
     lock_step = 0,
 
-    active_notes = {},
     notes_off_metro = metro.init()
   }
   o.notes_off_metro.event = function() o:all_notes_off() end
@@ -282,10 +281,14 @@ function Spiral:step()
           -- Mx.Samples
           if audio_engines[params:get("audio_engine")] == "MxSamples" then
             skeys:on({name=self.mx_instrument, midi=note_num, velocity=velocity})
+            table.insert(self.active_notes, note_num)
+            
             -- chord mode
             if self:get_param("play_mode") == 2 then
               skeys:on({name=self.mx_instrument, midi=note_num3, velocity=velocity})
               skeys:on({name=self.mx_instrument, midi=note_num5, velocity=velocity})
+              table.insert(self.active_notes, note_num3)
+              table.insert(self.active_notes, note_num5)
             end
             note_off = true
           else
