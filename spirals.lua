@@ -213,6 +213,32 @@ function redraw()
   
   screen.move(0, 8)
   screen.text(current_spiral)
+  
+  -- draw play/pause icon
+  if spiral.playing then
+    screen.move(10, 7)
+    screen.line(10, 1)
+    screen.line(16, 4)
+    screen.line(10, 7)
+  else
+    screen.rect(10, 1, 6, 6)
+  end
+  screen.fill()
+  
+  -- draw lock icon
+  if spiral.locked then
+    screen.line_width(1)
+    screen.aa(0)
+    screen.rect(20, 4, 6, 4)
+    screen.move(21, 4)
+    screen.line(21, 1)
+    screen.line(25, 1)
+    screen.line(25, 4)
+    screen.stroke()
+    screen.rect(22, 5, 1, 2)
+    screen.fill()
+    screen.aa(1)
+  end
 
   if options_state == 0 and option_vis then
     draw_scale()
