@@ -38,9 +38,11 @@ local spirals = {}
 function init()
   if libInstalled("mx.samples/lib/mx.samples") then
     mxsamples = include("mx.samples/lib/mx.samples")
-    table.insert(audio_engines, "MxSamples")
     skeys = mxsamples:new()
     mxsamples_instruments = skeys:list_instruments()
+    if #mxsamples_instruments > 0 then
+      table.insert(audio_engines, "MxSamples")
+    end
   end
 
   for i = 1, #MusicUtil.SCALES do

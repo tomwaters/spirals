@@ -54,8 +54,8 @@ function Spiral:reset()
 end
 
 function Spiral:init_params()
-  local param_count = mxsamples == nil and 16 or 17
-  
+  local param_count = #mxsamples_instruments == 0 and 16 or 17
+
   params:add_group("spiral "..self.id, param_count)
   
   params:add{type = "option", id = self.id.."_output", name = "output",
@@ -72,7 +72,7 @@ function Spiral:init_params()
     end
   }
   
-  if mxsamples ~= nil then
+  if #mxsamples_instruments > 0 then
     params:add{type = "option", id = self.id.."_mxsamples_instrument", name = "mx inst.", options = mxsamples_instruments, 
       action = function(value)
         self:all_notes_off()
