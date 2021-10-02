@@ -33,6 +33,8 @@ function Spiral:new(id)
     
     locked = false,
     lock_step = 0,
+    lock_start = 0,
+    lock_end = 0,
 
     notes_off_metro = metro.init()
   }
@@ -131,7 +133,16 @@ function Spiral:init_params()
   --cs_ROTFOFQ = controlspec.new(0, 10, 'lin', 0.001, 0.001, 'Hz', 0.001)
   params:add{type = "control", id = self.id.."_rot_lfo_fq", name = "lfo freq", controlspec = controlspec.LOFREQ}  
   
-  params:add{type = "number", id = self.id.."_lock_steps", name = "lock steps", min = 1, max = 16, default = 4}
+  params:add{type = "number", id = self.id.."_lock_steps", name = "lock steps", min = 1, max = 16, default = 4, action = 
+    function(x)
+      if self.locked then
+        self.lock_start = self.lock_end - x + 1
+        if self.lock_start < 1 then
+          self.lock_start = 1
+        end
+      end
+    end
+  }
 
   params:add{type = "option", id = self.id.."_play_mode", name = "play mode",
     options = options.PLAY_MODE, action = function(value) end}
@@ -210,10 +221,17 @@ function Spiral:all_notes_off()
   self.active_notes = {}
 end
 
-function Spiral:reset_lock()
-  self.lock_step = #self.points - self:get_param("lock_steps") + 1
-  if self.lock_step < 1 then
-    self.lock_step = 1
+function Spiral:toggle_lock()
+  self.locked = not self.locked
+  if self.locked then
+    self.lock_start = #self.points - self:get_param("lock_steps") + 1 
+    self.lock_end = #self.points
+    
+    if self.lock_start < 1 then
+      self.lock_start = 1
+    end
+    
+    self.lock_step = self.lock_start
   end
 end
 
@@ -238,13 +256,15 @@ function Spiral:step()
     if self.playing then
       local note_angle = 0
       if self.locked then
+        self:draw_grid()
+        
         local deltaX = self.points[self.lock_step].x - 64
         local deltaY = self.points[self.lock_step].y - 32
         note_angle = math.atan2(deltaY, deltaX)
   
         self.lock_step = self.lock_step + 1
-        if self.lock_step > #self.points then
-          self:reset_lock()
+        if self.lock_step > self.lock_end then
+          self.lock_step = self.lock_start
         end
       else
         self.rotation = self:get_param("rotation")
@@ -263,6 +283,7 @@ function Spiral:step()
           r = 1
         })
         note_angle = self.angle
+        self:draw_grid()
       end
   
       local note_idx = math.ceil((note_angle % two_pi) / self.rads_per_note)
@@ -338,6 +359,46 @@ function Spiral:step()
     end
   end
 
+end
+
+function Spiral:draw_grid()
+  if g and current_spiral == self.id then
+    local cells = g.rows * (g.cols - 2)
+    
+    local grid_lock_start = self.lock_start
+    local grid_lock_end = self.lock_end
+    local grid_lock_step = self.lock_step
+    if #self.points > cells then
+      grid_lock_start = cells - (#self.points - grid_lock_start)
+      grid_lock_end = cells - (#self.points - grid_lock_end)
+      grid_lock_step = cells - (#self.points - grid_lock_step)
+    end
+    
+    for n=1, cells do
+      local y = math.ceil(n / g.rows)
+      local x = n % g.cols
+      if x == 0 then
+        x = g.cols
+      end
+      
+      local val = 0
+      if n <= #self.points then
+        if self.locked and n == grid_lock_step then
+          val = 15
+        elseif self.locked and n >= grid_lock_start and n <= grid_lock_end then
+          val = 10
+        elseif not self.locked and (n == #self.points or #self.points > cells and n == cells) then
+          val = 15
+        else
+          val = 5
+        end
+      end
+      
+      g:led(x, y, val)
+    end
+    
+    g:refresh()
+  end
 end
 
 return Spiral
