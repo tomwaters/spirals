@@ -218,21 +218,54 @@ function select_spiral(n)
   spirals[current_spiral]:draw_grid()
 end
 
+local grid_held_keys = {}
 g.key = function(x, y, z)
-  if z == 0 then
-    if y == grid_menu_row then
-      if x <= #spirals then
-        select_spiral(x)
-      elseif x == 7 then
-        spirals[current_spiral]:toggle_lock()
-      elseif x == 8 then
-        spirals[current_spiral].playing = not spirals[current_spiral].playing
+  -- grid menu buttons
+  if z == 1 and y == grid_menu_row then
+    if x <= #spirals then
+      select_spiral(x)
+    elseif x == 7 then
+      spirals[current_spiral]:toggle_lock()
+    elseif x == 8 then
+      spirals[current_spiral].playing = not spirals[current_spiral].playing
+    end
+    grid_draw_menu()
+  end
+
+  -- grid lock buttons
+  if y < g.rows - 1 then
+    local val = ((y - 1) * g.cols) + x
+    
+    if z == 1 then
+      table.insert(grid_held_keys, val)
+      if #grid_held_keys > 1 then
+        -- get max min, set lock
+        local min = math.min(table.unpack(grid_held_keys))
+        local max = math.max(table.unpack(grid_held_keys))
+        
+        if max > #spirals[current_spiral].points then
+          return
+        end
+        
+        local cells = g.rows * (g.cols - 2)
+        if #spirals[current_spiral].points > cells then
+          min = #spirals[current_spiral].points - (cells - min)
+          max = #spirals[current_spiral].points - (cells - max)
+        end
+        spirals[current_spiral]:lock(min, max)
+        grid_draw_menu()
+        grid_held_keys = {}
       end
-      grid_draw_menu()
     else
-      -- lock selection??
+      for i, n in pairs(grid_held_keys) do
+        if n == val then
+          table.remove(grid_held_keys, i)
+          break
+        end
+      end
     end
   end
+  
 end
 
 function grid_draw_menu()

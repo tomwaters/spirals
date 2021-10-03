@@ -222,17 +222,24 @@ function Spiral:all_notes_off()
 end
 
 function Spiral:toggle_lock()
-  self.locked = not self.locked
   if self.locked then
-    self.lock_start = #self.points - self:get_param("lock_steps") + 1 
-    self.lock_end = #self.points
-    
-    if self.lock_start < 1 then
-      self.lock_start = 1
-    end
-    
-    self.lock_step = self.lock_start
+    self.locked = false
+  else
+    local s = #self.points - self:get_param("lock_steps") + 1 
+    local e = #self.points
+    self:lock(s, e)
   end
+end
+
+function Spiral:lock(l_start, l_end)
+  self.locked = true
+  
+  self.lock_start = l_start
+  self.lock_end = l_end
+  if self.lock_start < 1 then
+      self.lock_start = 1
+  end
+  self.lock_step = self.lock_start
 end
 
 function Spiral:get_third(note_idx)
