@@ -15,6 +15,10 @@ engine.name = "PolyPerc"
 MusicUtil = require "musicutil"
 local Spiral = include("lib/spiral")
 
+local grid_menu_row = 8
+local grid = util.file_exists(_path.code.."midigrid") and include "midigrid/lib/midigrid" or grid
+g = grid.connect()
+  
 scale_names = {}
 audio_engines = {"PolyPerc"}
 mxsamples_instruments = {}
@@ -32,8 +36,8 @@ local option_ids = {"rotation", "rot_lfo_amt", "rot_lfo_fq", "lock_steps", "root
 local option_names = {"rotation", "lfo amount", "lfo freq", "lock steps", "root note", "scale mode", "play mode", "step div", "rests"}
 local option_vis = false
 
-local current_spiral = 0
 local spirals = {}
+current_spiral = 0
 
 function init()
   if libInstalled("mx.samples/lib/mx.samples") then
@@ -119,6 +123,12 @@ function init()
 
   draw_metro.event = update
   draw_metro:start(1/60)
+  
+  if g then
+    grid_menu_row = g.rows
+    grid_draw_menu()
+  end
+  
 end
 
 function mxSamplesInit()
@@ -163,7 +173,8 @@ end
 
 function enc(n, d)
   if n == 1 then
-    current_spiral = util.clamp(current_spiral + d, 1, #spirals)
+    select_spiral(util.clamp(current_spiral + d, 1, #spirals))
+    grid_draw_menu()
   elseif options_state > 0 then
     -- if options are visible, e2 changes option & e3 changes value
     if n == 2 then
@@ -183,15 +194,12 @@ function key(n, z)
   if n==1 then
     alt = z==1
   elseif n == 2 and z == 1 then
-    local spiral = spirals[current_spiral]
     if alt then
-      if #spiral.points > 0 then
-        spiral.locked = not spiral.locked
-        spiral:reset_lock()
-      end
+      spirals[current_spiral]:toggle_lock()
     else
-      spiral.playing = not spiral.playing
+      spirals[current_spiral].playing = not spirals[current_spiral].playing
     end
+    grid_draw_menu()
   elseif n == 3 and z == 1 then
     -- if options aren't visible and alt is held then show the scale overlay, otherwise toggle options if not currently moving
     if alt and options_state == 0 then
@@ -202,6 +210,75 @@ function key(n, z)
       options_state = options_state == 1 and 2 or 1
       options_slide_metro:start(1/60, option_slide_steps)
     end
+  end
+end
+
+function select_spiral(n)
+  current_spiral = n
+  spirals[current_spiral]:draw_grid()
+end
+
+local grid_held_keys = {}
+g.key = function(x, y, z)
+  -- grid menu buttons
+  if z == 1 and y == grid_menu_row then
+    if x <= #spirals then
+      select_spiral(x)
+    elseif x == 7 then
+      spirals[current_spiral]:toggle_lock()
+    elseif x == 8 then
+      spirals[current_spiral].playing = not spirals[current_spiral].playing
+    end
+    grid_draw_menu()
+  end
+
+  -- grid lock buttons
+  if y < g.rows - 1 then
+    local val = ((y - 1) * g.cols) + x
+    
+    if z == 1 then
+      table.insert(grid_held_keys, val)
+      if #grid_held_keys > 1 then
+        -- get max min, set lock
+        local min = math.min(table.unpack(grid_held_keys))
+        local max = math.max(table.unpack(grid_held_keys))
+        
+        if max > #spirals[current_spiral].points then
+          return
+        end
+        
+        local cells = g.rows * (g.cols - 2)
+        if #spirals[current_spiral].points > cells then
+          min = #spirals[current_spiral].points - (cells - min)
+          max = #spirals[current_spiral].points - (cells - max)
+        end
+        spirals[current_spiral]:lock(min, max)
+        grid_draw_menu()
+        grid_held_keys = {}
+      end
+    else
+      for i, n in pairs(grid_held_keys) do
+        if n == val then
+          table.remove(grid_held_keys, i)
+          break
+        end
+      end
+    end
+  end
+  
+end
+
+function grid_draw_menu()
+  if g then
+    for s=1, #spirals do
+      g:led(s, grid_menu_row, s==current_spiral and 15 or 10)
+    end
+    
+    local spiral = spirals[current_spiral]
+    g:led(g.cols - 1, grid_menu_row, spiral.locked and 15 or 10)
+    g:led(g.cols, grid_menu_row, spiral.playing and 15 or 10)
+    
+    g:refresh()
   end
 end
 
