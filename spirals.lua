@@ -224,9 +224,9 @@ g.key = function(x, y, z)
   if z == 1 and y == grid_menu_row then
     if x <= #spirals then
       select_spiral(x)
-    elseif x == 7 then
+    elseif x == g.cols - 1 then
       spirals[current_spiral]:toggle_lock()
-    elseif x == 8 then
+    elseif x == g.cols then
       spirals[current_spiral].playing = not spirals[current_spiral].playing
     end
     grid_draw_menu()
